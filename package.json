@@ -1,0 +1,18 @@
+{
+  "name": "toggl-export",
+  "version": "0.0.1",
+  "description": "Allow to export data from toggl. Will get the summary of hours per project.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Luis Alvarez",
+  "license": "MIT",
+  "dependencies": {
+    "minimist": "^1.2.0",
+    "moment": "^2.15.1",
+    "msexcel-builder": "0.0.2",
+    "promise": "^7.1.1",
+    "request-promise": "^3.0.0"
+  }
+}

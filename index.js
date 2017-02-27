@@ -38,7 +38,10 @@ rp(requestOptions).then(function (summaryReport) {
     project.items.forEach(function(togglTask) {
       taskPromises.push(new Promise(function(accept, reject) {
         var task = {};
-        task.duration = moment.utc(togglTask.time).format("HH:mm");
+        var duration = moment.duration(togglTask.time);
+        var hours = Math.floor(duration.asHours());
+        var minutes = duration.minutes();
+        task.duration = hours + ":" + minutes;
         task.type = project.title.project;
         task.name = togglTask.title.time_entry;
         task.owner = config.getYourName();
@@ -88,17 +91,17 @@ rp(requestOptions).then(function (summaryReport) {
     console.log("Error while getting/processing all the tasks");
     console.error(error);
   });
-  
+
 }).catch(function (err) {
   console.error(err);
 });
 
 function saveTasksInExcelFile(tasks) {
   var fields = ["duration", "type", "owner", "estimate", "url", "name"];
-  // Create a new workbook file in current working-path 
+  // Create a new workbook file in current working-path
   var workbook = excelbuilder.createWorkbook('./', 'tasks.xlsx')
 
-  // Create a new worksheet with 10 columns and 12 rows 
+  // Create a new worksheet with 10 columns and 12 rows
   var sheet1 = workbook.createSheet('sheet1', fields.length, tasks.length);
 
     for (var i = 0, j = tasks.length; i < j; i++) {

@@ -11,8 +11,8 @@
   "dependencies": {
     "minimist": "^1.2.0",
     "moment": "^2.15.1",
-    "msexcel-builder": "0.0.2",
     "promise": "^7.1.1",
-    "request-promise": "^3.0.0"
+    "request-promise": "^3.0.0",
+    "xlsx": "^0.9.12"
   }
 }

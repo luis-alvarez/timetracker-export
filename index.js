@@ -128,7 +128,13 @@ function sheet_from_array_of_arrays(data, fields, opts) {
 			if(cell.v == null) continue;
 			var cell_ref = XLSX.utils.encode_cell({c:C,r:R});
 
-			if(typeof cell.v === 'number') cell.t = 'n';
+			if(typeof cell.v === 'number') {
+        cell.t = 'n';
+        if (C == 0) {
+          cell.z = "#,00"
+        }
+        XLSX.utils.format_cell(cell);
+      }
 			else if(typeof cell.v === 'boolean') cell.t = 'b';
 			else if(cell.v instanceof Date) {
 				cell.t = 'n'; cell.z = XLSX.SSF._table[14];
@@ -144,24 +150,28 @@ function sheet_from_array_of_arrays(data, fields, opts) {
 }
 
 function saveTasksInExcelFile(tasks) {
-  // Create the dataSet from the tasks and fields
-  var fields = ["duration", "type", "owner", "estimate", "url", "name"];
-  var tasksRows = [];
-  tasks.forEach(function(task) {
-    var taskColumns = [];
-    fields.forEach(function(field) {
-      taskColumns.push(task[field]);
+  try {
+    // Create the dataSet from the tasks and fields
+    var fields = ["duration", "type", "owner", "estimate", "url", "name"];
+    var tasksRows = [];
+    tasks.forEach(function(task) {
+      var taskColumns = [];
+      fields.forEach(function(field) {
+        taskColumns.push(task[field]);
+      });
+      tasksRows.push(taskColumns);
     });
-    tasksRows.push(taskColumns);
-  });
-  var ws_name = "Toggl Export";
+    var ws_name = "Toggl Export";
 
-  var wb = new Workbook(), ws = sheet_from_array_of_arrays(tasksRows, fields);
+    var wb = new Workbook(), ws = sheet_from_array_of_arrays(tasksRows, fields);
 
-  /* add worksheet to workbook */
-  wb.SheetNames.push(ws_name);
-  wb.Sheets[ws_name] = ws;
+    /* add worksheet to workbook */
+    wb.SheetNames.push(ws_name);
+    wb.Sheets[ws_name] = ws;
 
-  /* write file */
-  XLSX.writeFile(wb, 'toggl-export.xlsx');
+    /* write file */
+    XLSX.writeFile(wb, 'toggl-export.xlsx');
+  } catch (error) {
+    console.error(error);
+  }
 }

@@ -1,107 +1,111 @@
-var argv = require('minimist')(process.argv.slice(2));
-var rp = require('request-promise');
-var config = require('./config.js');
-var moment = require('moment');
-var Promise = require('promise');
-var XLSX = require('xlsx');
+const argv = require('minimist')(process.argv.slice(2));
+const rp = require('request-promise-native');
+const moment = require('moment');
+const XLSX = require('xlsx');
 
-var pivotalTrackerRESTToken = config.getPivotalTrackerRESTToken();
-var pivotalTrackerProjectId = config.getPivotalTrackerProjectId();
+const config = require('./config.js');
+const pivotalTrackerRESTToken = config.getPivotalTrackerRESTToken();
+const pivotalTrackerProjectId = config.getPivotalTrackerProjectId();
 
-var togglSummaryReportUrl = "https://toggl.com/reports/api/v2/summary?user_agent=node-toggl-export&workspace_id=" + config.getTogglWorkspaceId();
+function getReportURL(since, until) {
+  var togglSummaryReportUrl = "https://toggl.com/reports/api/v2/summary?user_agent=node-toggl-export&workspace_id=" + config.getTogglWorkspaceId();
 
-var startDate = moment().format("YYYY-MM-DD");
-var endDate = moment().date(moment().date() + 1).format("YYYY-MM-DD");
+  var startDate = moment().format("YYYY-MM-DD");
+  var endDate = moment().date(moment().date() + 1).format("YYYY-MM-DD");
 
-if (argv.since) {
-  startDate = moment(argv.since, "YYYY-MM-DD").format("YYYY-MM-DD");
+  if (since) {
+    startDate = moment(since, "YYYY-MM-DD").format("YYYY-MM-DD");
+  }
+
+  if (until) {
+    endDate = moment(until, "YYYY-MM-DD").format("YYYY-MM-DD");
+  }
+
+  togglSummaryReportUrl += "&since=" + startDate;
+  togglSummaryReportUrl += "&until=" + endDate;
+
+  return togglSummaryReportUrl;
 }
 
-if (argv.until) {
-  endDate = moment(argv.until, "YYYY-MM-DD").format("YYYY-MM-DD");
-}
+async function main() {
 
-togglSummaryReportUrl += "&since=" + startDate;
-togglSummaryReportUrl += "&until=" + endDate;
+  try {
+    var requestOptions = {
+      "url": getReportURL(argv.since, argv.until),
+      "auth": {
+        "user": config.getTogglRESTToken(),
+        "password": "api_token"
+      },
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "json": true
+    };
 
-var requestOptions = {
-  "url": togglSummaryReportUrl,
-  "auth": {
-    "user": config.getTogglRESTToken(),
-    "password": "api_token"
-  },
-  "headers": {
-    "Content-Type": "application/json"
-  },
-  "json": true
-};
+    console.log("Getting report from ", startDate, " to ", endDate);
+    const summaryReport = await rp(requestOptions);
+    console.log("Received good response from Toggl, processing data.");
 
-console.log("Getting report from ", startDate, " to ", endDate);
+    var taskPromises = [];
 
-rp(requestOptions).then(function (summaryReport) {
-  console.log("Received good response from Toggl, processing data.");
-  var taskPromises = [];
+    summaryReport.data.forEach(function(project) {
+      project.items.forEach(function(togglTask) {
+        taskPromises.push(new Promise(function(accept, reject) {
+          var task = {};
+          var duration = moment.duration(togglTask.time);
+          var hours = duration.asHours();
+          task.duration = hours;
+          task.type = project.title.project;
+          task.name = togglTask.title.time_entry;
+          task.owner = config.getYourName();
 
-  summaryReport.data.forEach(function(project) {
-    project.items.forEach(function(togglTask) {
-      taskPromises.push(new Promise(function(accept, reject) {
-        var task = {};
-        var duration = moment.duration(togglTask.time);
-        var hours = duration.asHours();
-        task.duration = hours;
-        task.type = project.title.project;
-        task.name = togglTask.title.time_entry;
-        task.owner = config.getYourName();
+          try {
+            if (task.name.indexOf("#") == 0) {
+              task.id = task.name.split(" ")[0].replace("#", "");
+              task.url = "https://www.pivotaltracker.com/story/show/" + task.id;
+              var pivotalRequestPromiseOptions = {
+                "uri": "https://www.pivotaltracker.com/services/v5/projects/" + pivotalTrackerProjectId + "/stories/" + task.id,
+                "headers": {
+                  "Content-Type": "application/json",
+                  "X-TrackerToken": pivotalTrackerRESTToken
+                },
+                "json": true
+              };
+              rp(pivotalRequestPromiseOptions).then(function(pivotalTaskResponse) {
+                task.estimate = pivotalTaskResponse.estimate;
+                accept(task);
+              }).catch(function(response) {
+                console.error("Error while getting task from pivotal tracker: ");
+                console.error(task.name);
+                if (response && response.error) {
+                  console.error(response.error.error);
+                }
+                accept(task);
+              });
+              return;
+            }
 
-        try {
-          if (task.name.indexOf("#") == 0) {
-            task.id = task.name.split(" ")[0].replace("#", "");
-            task.url = "https://www.pivotaltracker.com/story/show/" + task.id;
-            var pivotalRequestPromiseOptions = {
-              "uri": "https://www.pivotaltracker.com/services/v5/projects/" + pivotalTrackerProjectId + "/stories/" + task.id,
-              "headers": {
-                "Content-Type": "application/json",
-                "X-TrackerToken": pivotalTrackerRESTToken
-              },
-              "json": true
-            };
-            rp(pivotalRequestPromiseOptions).then(function(pivotalTaskResponse) {
-              task.estimate = pivotalTaskResponse.estimate;
-              accept(task);
-            }).catch(function(response) {
-              console.error("Error while getting task from pivotal tracker: ");
-              console.error(task.name);
-              if (response && response.error) {
-                console.error(response.error.error);
-              }
-              accept(task);
-            });
-            return;
+            accept(task);
+
+          } catch (e) {
+            console.error(e);
+            console.error("Error while processing " + task.name);
           }
 
-          accept(task);
+        }));
+      });
 
-        } catch (e) {
-          console.error(e);
-          console.error("Error while processing " + task.name);
-        }
+      const tasks = await Promise.all(taskPromises);
+      console.log("All tasks processed succesfully.");
+      saveTasksInExcelFile(tasks);
 
-      }));
     });
-
-  });
-
-  Promise.all(taskPromises).then(function(tasks) {
-    console.log("All tasks processed succesfully.");
-    saveTasksInExcelFile(tasks);
-  }).catch(function(error) {
-    console.log("Error while getting/processing all the tasks");
+  } catch (error) {
     console.error(error);
-  });
+  }
 
-}).catch(function (err) {
-  console.error(err);
-});
+}
+
 
 function Workbook() {
 	if(!(this instanceof Workbook)) return new Workbook();
@@ -175,3 +179,11 @@ function saveTasksInExcelFile(tasks) {
     console.error(error);
   }
 }
+
+main()
+.then(() => {
+  console.log("all done!");
+})
+.catch((error) => {
+  console.error(error);
+});

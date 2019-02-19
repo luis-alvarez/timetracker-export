@@ -27,23 +27,25 @@ function getReportURL(since, until) {
   return togglSummaryReportUrl;
 }
 
+function getRequestOptions() {
+  return {
+    "url": getReportURL(argv.since, argv.until),
+    "auth": {
+      "user": config.getTogglRESTToken(),
+      "password": "api_token"
+    },
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "json": true
+  };
+}
+
 async function main() {
 
   try {
-    var requestOptions = {
-      "url": getReportURL(argv.since, argv.until),
-      "auth": {
-        "user": config.getTogglRESTToken(),
-        "password": "api_token"
-      },
-      "headers": {
-        "Content-Type": "application/json"
-      },
-      "json": true
-    };
 
-    console.log("Getting report from ", startDate, " to ", endDate);
-    const summaryReport = await rp(requestOptions);
+    const summaryReport = await rp(getRequestOptions());
     console.log("Received good response from Toggl, processing data.");
 
     var taskPromises = [];
@@ -94,12 +96,13 @@ async function main() {
 
         }));
       });
-
-      const tasks = await Promise.all(taskPromises);
-      console.log("All tasks processed succesfully.");
-      saveTasksInExcelFile(tasks);
-
     });
+
+    const tasks = await Promise.all(taskPromises);
+    console.log("All tasks processed succesfully.");
+
+    saveTasksInExcelFile(tasks);
+
   } catch (error) {
     console.error(error);
   }

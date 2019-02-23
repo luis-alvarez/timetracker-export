@@ -11,7 +11,7 @@ const { uniq: removeDuplicates, keyBy, groupBy, keys: getKeys } = require("lodas
 
 const TOGGL_TIME_ENTRIES_URL = "https://www.toggl.com/api/v8/time_entries?user_agent=node-toggl-export&workspace_id=";
 const TOGGL_PROJECT_URL = "https://www.toggl.com/api/v8/projects/";
-const OWNER_NAME = "Luis Alvarez";
+const OWNER_NAME = config.getYourName();
 
 function getTimeEntriesURL(since, until) {
   var togglTimeEntriesUrl = TOGGL_TIME_ENTRIES_URL + config.getTogglWorkspaceId();

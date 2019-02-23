@@ -17,7 +17,7 @@ EG config.json file
 
 Run:
 ----
-    node index.js
+    node index.js //will export current date tasks to toggl-export.xslx
 
 Available Params
 ----------------
@@ -37,4 +37,3 @@ Available Params
 
  - Convert this to be a CLI
  - Add a weekly param to get a last week's report
- - Allow the start of a task, providing a pivotal ID, will generate a new branch with the id and title (normalize it to be a valid branch reference), and start the toggle timer.

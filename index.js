@@ -7,29 +7,35 @@ const config = require('./config.js');
 const pivotalTrackerRESTToken = config.getPivotalTrackerRESTToken();
 const pivotalTrackerProjectId = config.getPivotalTrackerProjectId();
 
-function getReportURL(since, until) {
-  var togglSummaryReportUrl = "https://toggl.com/reports/api/v2/summary?user_agent=node-toggl-export&workspace_id=" + config.getTogglWorkspaceId();
+const { uniq: removeDuplicates, keyBy, groupBy, keys: getKeys } = require("lodash");
 
-  var startDate = moment().format("YYYY-MM-DD");
-  var endDate = moment().date(moment().date() + 1).format("YYYY-MM-DD");
+const TOGGL_TIME_ENTRIES_URL = "https://www.toggl.com/api/v8/time_entries?user_agent=node-toggl-export&workspace_id=";
+const TOGGL_PROJECT_URL = "https://www.toggl.com/api/v8/projects/";
+const OWNER_NAME = "Luis Alvarez";
+
+function getTimeEntriesURL(since, until) {
+  var togglTimeEntriesUrl = TOGGL_TIME_ENTRIES_URL + config.getTogglWorkspaceId();
+
+  var startDate = moment().toISOString();
+  var endDate = moment().date(moment().date() + 1).toISOString();
 
   if (since) {
-    startDate = moment(since, "YYYY-MM-DD").format("YYYY-MM-DD");
+    startDate = moment(since, "YYYY-MM-DD").toISOString();
   }
 
   if (until) {
-    endDate = moment(until, "YYYY-MM-DD").format("YYYY-MM-DD");
+    endDate = moment(until, "YYYY-MM-DD").toISOString();
   }
 
-  togglSummaryReportUrl += "&since=" + startDate;
-  togglSummaryReportUrl += "&until=" + endDate;
+  togglTimeEntriesUrl += "&start_date=" + startDate;
+  togglTimeEntriesUrl += "&end_date=" + endDate;
 
-  return togglSummaryReportUrl;
+  return togglTimeEntriesUrl;
 }
 
-function getRequestOptions() {
-  return {
-    "url": getReportURL(argv.since, argv.until),
+function getTimeEntries() {
+  const requestOptions = {
+    "url": getTimeEntriesURL(argv.since, argv.until),
     "auth": {
       "user": config.getTogglRESTToken(),
       "password": "api_token"
@@ -39,73 +45,95 @@ function getRequestOptions() {
     },
     "json": true
   };
+  return rp(requestOptions);
+}
+
+function getProject (projectId) {
+  const requestOptions = {
+    "url": TOGGL_PROJECT_URL + projectId,
+    "auth": {
+      "user": config.getTogglRESTToken(),
+      "password": "api_token"
+    },
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "json": true
+  };
+  return rp(requestOptions);
+}
+
+async function getProjectsFromIds(projectIds) {
+  const projects = (await Promise.all(projectIds.filter(Boolean).map(pid => getProject(pid)))).map(project => project.data);
+  return keyBy(projects, "id");
+}
+
+const getProjectIdsFromTimeEntries = (timeEntries) => removeDuplicates(timeEntries.map(te => te.pid));
+
+const getPivotalTrackerData = async (taskName) => {
+  try {
+    if (taskName.indexOf("#") == 0) {
+      const pivotalId = taskName.split(" ")[0].replace("#", "");
+      const pivotalTaskURL = "https://www.pivotaltracker.com/story/show/" + pivotalId;
+
+      const pivotalTaskRPOptions = {
+        "uri": "https://www.pivotaltracker.com/services/v5/projects/" + pivotalTrackerProjectId + "/stories/" + pivotalId,
+        "headers": {
+          "Content-Type": "application/json",
+          "X-TrackerToken": pivotalTrackerRESTToken
+        },
+        "json": true
+      };
+
+      const pivotalTask = await rp(pivotalTaskRPOptions);
+
+      return {
+        "estimate": pivotalTask.estimate,
+        "url": pivotalTaskURL
+      };
+    }
+    return {};
+  } catch (e) {
+    console.error(e);
+    console.error("Error while getting information from pivotal tracker for task: " + taskName);
+  }
+  return {};
+};
+
+const getTaskData = (groupedTimeEntries, projects) => {
+  return async (taskId) => {
+    const taskTimeEntries = groupedTimeEntries[taskId];
+    const task = taskTimeEntries[0];
+    const taskTotalDuration = taskTimeEntries.reduce((totalDuration, { duration }) => totalDuration + duration, 0);
+    const daysWorked = removeDuplicates(taskTimeEntries.map(te => moment(te.start).format("dddd"))).join(", ");
+    const pivotalData = await getPivotalTrackerData(task.description);
+
+    return  {
+      "name": task.description,
+      daysWorked,
+      ...pivotalData,
+      "duration": moment.duration(taskTotalDuration, 'seconds').asHours(),
+      "type": projects[task.pid].name,
+      "owner": OWNER_NAME,
+      "notes": ""
+    }
+  };
 }
 
 async function main() {
 
-  try {
+  const timeEntries = await getTimeEntries();
+  const projecIds = getProjectIdsFromTimeEntries(timeEntries);
+  const projects = await getProjectsFromIds(projecIds);
+  console.log("Received good response from Toggl, processing data.");
 
-    const summaryReport = await rp(getRequestOptions());
-    console.log("Received good response from Toggl, processing data.");
+  const groupedTimeEntries = groupBy(timeEntries, "description");
+  const performedTasksIds = getKeys(groupedTimeEntries);
+  const performedTasks = await Promise.all(performedTasksIds.map(getTaskData(groupedTimeEntries, projects)));
 
-    var taskPromises = [];
+  console.log("All tasks processed succesfully.");
 
-    summaryReport.data.forEach(function(project) {
-      project.items.forEach(function(togglTask) {
-        taskPromises.push(new Promise(function(accept, reject) {
-          var task = {};
-          var duration = moment.duration(togglTask.time);
-          var hours = duration.asHours();
-          task.duration = hours;
-          task.type = project.title.project;
-          task.name = togglTask.title.time_entry;
-          task.owner = config.getYourName();
-
-          try {
-            if (task.name.indexOf("#") == 0) {
-              task.id = task.name.split(" ")[0].replace("#", "");
-              task.url = "https://www.pivotaltracker.com/story/show/" + task.id;
-              var pivotalRequestPromiseOptions = {
-                "uri": "https://www.pivotaltracker.com/services/v5/projects/" + pivotalTrackerProjectId + "/stories/" + task.id,
-                "headers": {
-                  "Content-Type": "application/json",
-                  "X-TrackerToken": pivotalTrackerRESTToken
-                },
-                "json": true
-              };
-              rp(pivotalRequestPromiseOptions).then(function(pivotalTaskResponse) {
-                task.estimate = pivotalTaskResponse.estimate;
-                accept(task);
-              }).catch(function(response) {
-                console.error("Error while getting task from pivotal tracker: ");
-                console.error(task.name);
-                if (response && response.error) {
-                  console.error(response.error.error);
-                }
-                accept(task);
-              });
-              return;
-            }
-
-            accept(task);
-
-          } catch (e) {
-            console.error(e);
-            console.error("Error while processing " + task.name);
-          }
-
-        }));
-      });
-    });
-
-    const tasks = await Promise.all(taskPromises);
-    console.log("All tasks processed succesfully.");
-
-    saveTasksInExcelFile(tasks);
-
-  } catch (error) {
-    console.error(error);
-  }
+  saveTasksInExcelFile(performedTasks);
 
 }
 
@@ -159,7 +187,7 @@ function sheet_from_array_of_arrays(data, fields, opts) {
 function saveTasksInExcelFile(tasks) {
   try {
     // Create the dataSet from the tasks and fields
-    var fields = ["duration", "type", "owner", "estimate", "url", "name"];
+    var fields = ["duration", "type", "owner", "estimate", "url", "name", "notes", "daysWorked"];
     var tasksRows = [];
     tasks.forEach(function(task) {
       var taskColumns = [];

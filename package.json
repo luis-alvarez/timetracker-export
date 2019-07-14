@@ -9,7 +9,7 @@
   "author": "Luis Alvarez",
   "license": "MIT",
   "dependencies": {
-    "lodash": "^4.17.11",
+    "lodash": "^4.17.13",
     "minimist": "^1.2.0",
     "moment": "^2.24.0",
     "promise": "^7.1.1",

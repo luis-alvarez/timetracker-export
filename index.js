@@ -107,13 +107,15 @@ const getTaskData = (groupedTimeEntries, projects) => {
     const taskTotalDuration = taskTimeEntries.reduce((totalDuration, { duration }) => totalDuration + duration, 0);
     const daysWorked = removeDuplicates(taskTimeEntries.map(te => moment(te.start).format("dddd"))).join(", ");
     const pivotalData = await getPivotalTrackerData(task.description);
+    const project = projects[task.pid];
+    const projectName = project && project.name || "";
 
     return  {
       "name": task.description,
       daysWorked,
       ...pivotalData,
       "duration": moment.duration(taskTotalDuration, 'seconds').asHours(),
-      "type": projects[task.pid].name,
+      "type": projectName,
       "owner": OWNER_NAME,
       "notes": ""
     }

@@ -13,7 +13,7 @@ const TOGGL_TIME_ENTRIES_URL = "https://www.toggl.com/api/v8/time_entries?user_a
 const TOGGL_PROJECT_URL = "https://www.toggl.com/api/v8/projects/";
 const OWNER_NAME = config.getYourName();
 
-function getTimeEntriesURL(since, until) {
+function getTimeEntriesURL({ since, until, lastWeek, yesterday }) {
   var togglTimeEntriesUrl = TOGGL_TIME_ENTRIES_URL + config.getTogglWorkspaceId();
 
   var startDate = moment().toISOString();
@@ -27,6 +27,16 @@ function getTimeEntriesURL(since, until) {
     endDate = moment(until, "YYYY-MM-DD").toISOString();
   }
 
+  if (lastWeek) {
+    startDate = moment().subtract(1, "week").startOf("isoWeek").toISOString();
+    endDate = moment().subtract(1, "week").endOf("isoWeek").toISOString();
+  }
+
+  if (yesterday) {
+    startDate = moment().subtract(1, "day").startOf("day").toISOString();
+    endDate = moment().subtract(1, "day").endOf("day").toISOString();
+  }
+
   togglTimeEntriesUrl += "&start_date=" + startDate;
   togglTimeEntriesUrl += "&end_date=" + endDate;
 
@@ -35,7 +45,7 @@ function getTimeEntriesURL(since, until) {
 
 function getTimeEntries() {
   const requestOptions = {
-    "url": getTimeEntriesURL(argv.since, argv.until),
+    "url": getTimeEntriesURL(argv),
     "auth": {
       "user": config.getTogglRESTToken(),
       "password": "api_token"
@@ -135,6 +145,9 @@ async function main() {
 
   console.log("All tasks processed succesfully.");
 
+  if (argv.text) {
+    console.log("*yesterday*\n" + performedTasks.map(pt => "- " + pt.name).join("\n"));
+  }
   saveTasksInExcelFile(performedTasks);
 
 }

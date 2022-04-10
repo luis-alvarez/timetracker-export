@@ -10,7 +10,7 @@
   "license": "MIT",
   "dependencies": {
     "lodash": "^4.17.21",
-    "minimist": "^1.2.3",
+    "minimist": "^1.2.6",
     "moment": "^2.29.2",
     "promise": "^7.1.1",
     "request": "^2.88.0",
